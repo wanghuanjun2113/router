@@ -9,6 +9,7 @@ use kube::{
     Client,
 };
 use std::collections::{HashMap, HashSet};
+use std::net::{IpAddr, SocketAddr};
 
 use rustls;
 use std::sync::{Arc, Mutex};
@@ -61,7 +62,7 @@ pub enum PodType {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PodInfo {
     pub name: String,
-    pub ip: String,
+    pub ip: IpAddr,
     pub status: String,
     pub is_ready: bool,
     pub pod_type: Option<PodType>,
@@ -106,7 +107,7 @@ impl PodInfo {
     pub fn from_pod(pod: &Pod, config: Option<&ServiceDiscoveryConfig>) -> Option<Self> {
         let name = pod.metadata.name.clone()?;
         let status = pod.status.clone()?;
-        let pod_ip = status.pod_ip?;
+        let pod_ip: IpAddr = status.pod_ip?.parse().ok()?;
 
         let is_ready = if let Some(conditions) = &status.conditions {
             conditions
@@ -168,13 +169,8 @@ impl PodInfo {
     }
 
     /// Generates a worker URL for this pod.
-    /// IPv6 addresses are wrapped in brackets per RFC 2732 (e.g. `http://[::1]:8000`).
     pub fn worker_url(&self, port: u16) -> String {
-        if self.ip.contains(':') {
-            format!("http://[{}]:{}", self.ip, port)
-        } else {
-            format!("http://{}:{}", self.ip, port)
-        }
+        format!("http://{}", SocketAddr::new(self.ip, port))
     }
 }
 
@@ -740,7 +736,7 @@ mod tests {
         );
         let pod_info = PodInfo::from_pod(&k8s_pod, None).unwrap();
         assert_eq!(pod_info.name, "test-pod");
-        assert_eq!(pod_info.ip, "10.0.0.1");
+        assert_eq!(pod_info.ip, "10.0.0.1".parse::<IpAddr>().unwrap());
         assert_eq!(pod_info.status, "Running");
         assert!(pod_info.is_ready);
         assert!(pod_info.pod_type.is_none());
@@ -754,7 +750,7 @@ mod tests {
 
         let pod_info = PodInfo::from_pod(&k8s_pod, Some(&config)).unwrap();
         assert_eq!(pod_info.name, "prefill-pod");
-        assert_eq!(pod_info.ip, "10.0.0.1");
+        assert_eq!(pod_info.ip, "10.0.0.1".parse::<IpAddr>().unwrap());
         assert_eq!(pod_info.status, "Running");
         assert!(pod_info.is_ready);
         assert_eq!(pod_info.pod_type, Some(PodType::Prefill));
@@ -768,7 +764,7 @@ mod tests {
 
         let pod_info = PodInfo::from_pod(&k8s_pod, Some(&config)).unwrap();
         assert_eq!(pod_info.name, "decode-pod");
-        assert_eq!(pod_info.ip, "10.0.0.2");
+        assert_eq!(pod_info.ip, "10.0.0.2".parse::<IpAddr>().unwrap());
         assert_eq!(pod_info.status, "Running");
         assert!(pod_info.is_ready);
         assert_eq!(pod_info.pod_type, Some(PodType::Decode));
@@ -783,7 +779,7 @@ mod tests {
 
         let pod_info = PodInfo::from_pod(&k8s_pod, Some(&config)).unwrap();
         assert_eq!(pod_info.name, "regular-pod");
-        assert_eq!(pod_info.ip, "10.0.0.3");
+        assert_eq!(pod_info.ip, "10.0.0.3".parse::<IpAddr>().unwrap());
         assert_eq!(pod_info.status, "Running");
         assert!(pod_info.is_ready);
         assert_eq!(pod_info.pod_type, Some(PodType::Regular));
@@ -797,7 +793,7 @@ mod tests {
 
         let pod_info = PodInfo::from_pod(&k8s_pod, Some(&config)).unwrap();
         assert_eq!(pod_info.name, "unknown-pod");
-        assert_eq!(pod_info.ip, "10.0.0.4");
+        assert_eq!(pod_info.ip, "10.0.0.4".parse::<IpAddr>().unwrap());
         assert_eq!(pod_info.status, "Running");
         assert!(pod_info.is_ready);
         assert_eq!(pod_info.pod_type, Some(PodType::Regular));
@@ -876,7 +872,7 @@ mod tests {
     fn test_pod_info_is_healthy() {
         let healthy_pod = PodInfo {
             name: "p1".into(),
-            ip: "1.1.1.1".into(),
+            ip: "1.1.1.1".parse().unwrap(),
             status: "Running".into(),
             is_ready: true,
             pod_type: None,
@@ -886,7 +882,7 @@ mod tests {
 
         let not_ready_pod = PodInfo {
             name: "p2".into(),
-            ip: "1.1.1.2".into(),
+            ip: "1.1.1.2".parse().unwrap(),
             status: "Running".into(),
             is_ready: false,
             pod_type: None,
@@ -896,7 +892,7 @@ mod tests {
 
         let not_running_pod = PodInfo {
             name: "p3".into(),
-            ip: "1.1.1.3".into(),
+            ip: "1.1.1.3".parse().unwrap(),
             status: "Pending".into(),
             is_ready: true,
             pod_type: None,
@@ -909,7 +905,7 @@ mod tests {
     fn test_pod_info_worker_url_ipv4() {
         let pod_info = PodInfo {
             name: "p1".into(),
-            ip: "1.2.3.4".into(),
+            ip: "1.2.3.4".parse().unwrap(),
             status: "Running".into(),
             is_ready: true,
             pod_type: None,
@@ -922,7 +918,7 @@ mod tests {
     fn test_pod_info_worker_url_ipv6() {
         let pod_info = PodInfo {
             name: "p1".into(),
-            ip: "2803:6086:5cd3:6062:c68d:e7c7:480:10".into(),
+            ip: "2803:6086:5cd3:6062:c68d:e7c7:480:10".parse().unwrap(),
             status: "Running".into(),
             is_ready: true,
             pod_type: None,
@@ -938,7 +934,7 @@ mod tests {
     fn test_pod_info_equality_with_pod_type() {
         let pod1 = PodInfo {
             name: "pod1".into(),
-            ip: "1.2.3.4".into(),
+            ip: "1.2.3.4".parse().unwrap(),
             status: "Running".into(),
             is_ready: true,
             pod_type: Some(PodType::Prefill),
@@ -947,7 +943,7 @@ mod tests {
 
         let pod2 = PodInfo {
             name: "pod1".into(),
-            ip: "1.2.3.4".into(),
+            ip: "1.2.3.4".parse().unwrap(),
             status: "Running".into(),
             is_ready: true,
             pod_type: Some(PodType::Prefill),
@@ -956,7 +952,7 @@ mod tests {
 
         let pod3 = PodInfo {
             name: "pod1".into(),
-            ip: "1.2.3.4".into(),
+            ip: "1.2.3.4".parse().unwrap(),
             status: "Running".into(),
             is_ready: true,
             pod_type: Some(PodType::Decode),
@@ -973,7 +969,7 @@ mod tests {
         let tracked_pods = Arc::new(Mutex::new(HashSet::new()));
         let pod_info = PodInfo {
             name: "pod1".into(),
-            ip: "1.2.3.4".into(),
+            ip: "1.2.3.4".parse().unwrap(),
             status: "Pending".into(),
             is_ready: false,
             pod_type: None,
@@ -1002,7 +998,7 @@ mod tests {
         let tracked_pods = Arc::new(Mutex::new(HashSet::new()));
         let pod_info = PodInfo {
             name: "pod1".into(),
-            ip: "1.2.3.4".into(),
+            ip: "1.2.3.4".parse().unwrap(),
             status: "Running".into(),
             is_ready: true,
             pod_type: None,
@@ -1029,7 +1025,7 @@ mod tests {
         let tracked_pods = Arc::new(Mutex::new(HashSet::new()));
         let pod_info = PodInfo {
             name: "prefill-pod".into(),
-            ip: "1.2.3.4".into(),
+            ip: "1.2.3.4".parse().unwrap(),
             status: "Running".into(),
             is_ready: true,
             pod_type: Some(PodType::Prefill),
@@ -1058,7 +1054,7 @@ mod tests {
         let tracked_pods = Arc::new(Mutex::new(HashSet::new()));
         let pod_info = PodInfo {
             name: "decode-pod".into(),
-            ip: "1.2.3.5".into(),
+            ip: "1.2.3.5".parse().unwrap(),
             status: "Running".into(),
             is_ready: true,
             pod_type: Some(PodType::Decode),
@@ -1085,7 +1081,7 @@ mod tests {
         let tracked_pods = Arc::new(Mutex::new(HashSet::new()));
         let pod_info = PodInfo {
             name: "test-pod".into(),
-            ip: "1.2.3.4".into(),
+            ip: "1.2.3.4".parse().unwrap(),
             status: "Running".into(),
             is_ready: true,
             pod_type: Some(PodType::Prefill),
@@ -1119,7 +1115,7 @@ mod tests {
         let tracked_pods = Arc::new(Mutex::new(HashSet::new()));
         let pod_info = PodInfo {
             name: "untracked-pod".into(),
-            ip: "1.2.3.4".into(),
+            ip: "1.2.3.4".parse().unwrap(),
             status: "Running".into(),
             is_ready: true,
             pod_type: Some(PodType::Decode),
@@ -1148,7 +1144,7 @@ mod tests {
         let tracked_pods = Arc::new(Mutex::new(HashSet::new()));
         let pod_info = PodInfo {
             name: "regular-pod".into(),
-            ip: "1.2.3.4".into(),
+            ip: "1.2.3.4".parse().unwrap(),
             status: "Running".into(),
             is_ready: true,
             pod_type: Some(PodType::Regular),
@@ -1176,7 +1172,7 @@ mod tests {
         let tracked_pods = Arc::new(Mutex::new(HashSet::new()));
         let pod_info = PodInfo {
             name: "prefill-pod".into(),
-            ip: "1.2.3.4".into(),
+            ip: "1.2.3.4".parse().unwrap(),
             status: "Running".into(),
             is_ready: true,
             pod_type: Some(PodType::Prefill),
@@ -1204,7 +1200,7 @@ mod tests {
         let tracked_pods = Arc::new(Mutex::new(HashSet::new()));
         let pod_info = PodInfo {
             name: "decode-pod".into(),
-            ip: "1.2.3.4".into(),
+            ip: "1.2.3.4".parse().unwrap(),
             status: "Running".into(),
             is_ready: true,
             pod_type: Some(PodType::Decode),
