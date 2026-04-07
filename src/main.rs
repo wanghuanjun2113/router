@@ -363,6 +363,10 @@ struct CliArgs {
     /// Enable profiling calls to vLLM workers
     #[arg(long, default_value_t = false)]
     profile: bool,
+
+    /// KV connector type for PD disaggregation (nixl or mooncake)
+    #[arg(long, default_value = "nixl", value_parser = ["nixl", "mooncake"])]
+    kv_connector: String,
 }
 
 impl CliArgs {
@@ -652,6 +656,7 @@ impl CliArgs {
             },
             enable_profiling: self.profile,
             profile_timeout_secs: 10, // Default profiling timeout
+            kv_connector: self.kv_connector.clone(),
         })
     }
 

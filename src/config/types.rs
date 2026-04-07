@@ -81,6 +81,9 @@ pub struct RouterConfig {
     /// Profiling timeout in seconds (for vLLM profiling endpoints)
     #[serde(default = "default_profile_timeout_secs")]
     pub profile_timeout_secs: u64,
+    /// KV connector type for PD disaggregation ("nixl" or "mooncake")
+    #[serde(default = "default_kv_connector")]
+    pub kv_connector: String,
 }
 
 fn default_profile_timeout_secs() -> u64 {
@@ -93,6 +96,10 @@ fn default_history_backend() -> HistoryBackend {
 
 fn default_intra_node_data_parallel_size() -> usize {
     1
+}
+
+fn default_kv_connector() -> String {
+    "nixl".to_string()
 }
 
 /// History backend configuration
@@ -491,6 +498,7 @@ impl Default for RouterConfig {
             history_backend: default_history_backend(),
             enable_profiling: false,
             profile_timeout_secs: default_profile_timeout_secs(),
+            kv_connector: default_kv_connector(),
         }
     }
 }
