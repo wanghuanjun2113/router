@@ -1790,34 +1790,54 @@ impl PDRouter {
 
 // Helper functions
 
-async fn get_worker_load(client: &Client, worker_url: &str) -> Option<isize> {
-    match client.get(format!("{}/get_load", worker_url)).send().await {
-        Ok(res) if res.status().is_success() => match res.bytes().await {
-            Ok(bytes) => match serde_json::from_slice::<Value>(&bytes) {
-                Ok(data) => data
-                    .get("load")
-                    .and_then(|v| v.as_i64())
-                    .map(|v| v as isize),
-                Err(e) => {
-                    debug!("Failed to parse load response from {}: {}", worker_url, e);
-                    None
+/// Parse a single Prometheus metric value from text.
+fn parse_prometheus_metric(text: &str, metric_name: &str) -> Option<f64> {
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('#') || line.is_empty() {
+            continue;
+        }
+        if line.starts_with(metric_name) {
+            let rest = &line[metric_name.len()..];
+            if rest.starts_with('{') || rest.starts_with(' ') {
+                if let Some(value_str) = line.split_whitespace().next_back() {
+                    return value_str.parse::<f64>().ok();
                 }
-            },
+            }
+        }
+    }
+    None
+}
+
+/// Fetch worker load from /metrics (Prometheus) endpoint.
+/// load = num_requests_running + num_requests_waiting * 10
+async fn get_worker_load(client: &Client, worker_url: &str) -> Option<isize> {
+    match client.get(format!("{}/metrics", worker_url)).send().await {
+        Ok(res) if res.status().is_success() => match res.text().await {
+            Ok(text) => {
+                let running =
+                    parse_prometheus_metric(&text, "vllm:num_requests_running").unwrap_or(0.0)
+                        as isize;
+                let waiting =
+                    parse_prometheus_metric(&text, "vllm:num_requests_waiting").unwrap_or(0.0)
+                        as isize;
+                Some(running + waiting * 10)
+            }
             Err(e) => {
-                debug!("Failed to read load response from {}: {}", worker_url, e);
+                debug!("Failed to read metrics from {}: {}", worker_url, e);
                 None
             }
         },
         Ok(res) => {
             debug!(
-                "Worker {} returned non-success status: {}",
+                "Worker {} /metrics returned non-success status: {}",
                 worker_url,
                 res.status()
             );
             None
         }
         Err(e) => {
-            debug!("Failed to get load from {}: {}", worker_url, e);
+            debug!("Failed to get metrics from {}: {}", worker_url, e);
             None
         }
     }
