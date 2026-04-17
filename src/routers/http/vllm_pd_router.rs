@@ -97,9 +97,9 @@ impl VllmPDRouter {
                     let mut dp_engine_ids = HashMap::new();
                     if let Some(obj) = data.as_object() {
                         for (dp_rank_str, dp_entry) in obj {
-                            let dp_rank: usize = dp_rank_str.parse().map_err(|e| {
-                                format!("Invalid dp_rank '{}': {}", dp_rank_str, e)
-                            })?;
+                            let dp_rank: usize = dp_rank_str
+                                .parse()
+                                .map_err(|e| format!("Invalid dp_rank '{}': {}", dp_rank_str, e))?;
                             let engine_id = dp_entry
                                 .get("engine_id")
                                 .and_then(|v| v.as_str())
@@ -644,11 +644,12 @@ impl VllmPDRouter {
         if self.kv_connector == "mooncake" {
             // Mooncake: set decode params proactively from bootstrap info
             let prefill_url_key = format!("http://{}", prefill_base_http);
-            if let Some((bootstrap_addr, engine_id)) =
-                self.get_mooncake_info(&prefill_url_key, prefill_dp_rank).await
+            if let Some((bootstrap_addr, engine_id)) = self
+                .get_mooncake_info(&prefill_url_key, prefill_dp_rank)
+                .await
             {
-                decode_request["kv_transfer_params"] =
-                    self.build_mooncake_decode_kv_transfer_params(
+                decode_request["kv_transfer_params"] = self
+                    .build_mooncake_decode_kv_transfer_params(
                         &transfer_id,
                         &bootstrap_addr,
                         &engine_id,
@@ -665,8 +666,7 @@ impl VllmPDRouter {
             }
         } else {
             // NIXL: extract kv_transfer_params from prefill response
-            let kv_transfer_params =
-                prefill_response_json.get("kv_transfer_params").cloned();
+            let kv_transfer_params = prefill_response_json.get("kv_transfer_params").cloned();
             if let Some(ref params) = kv_transfer_params {
                 debug!(
                     "Extracted kv_transfer_params from prefill response: {}",
@@ -1052,11 +1052,12 @@ impl VllmPDRouter {
         let mut decode_request = original_request.clone();
         if self.kv_connector == "mooncake" {
             // Mooncake: set decode params proactively from bootstrap info
-            if let Some((bootstrap_addr, engine_id)) =
-                self.get_mooncake_info(&prefill_base_url, prefill_dp_rank).await
+            if let Some((bootstrap_addr, engine_id)) = self
+                .get_mooncake_info(&prefill_base_url, prefill_dp_rank)
+                .await
             {
-                decode_request["kv_transfer_params"] =
-                    self.build_mooncake_decode_kv_transfer_params(
+                decode_request["kv_transfer_params"] = self
+                    .build_mooncake_decode_kv_transfer_params(
                         &transfer_id,
                         &bootstrap_addr,
                         &engine_id,
@@ -1073,8 +1074,7 @@ impl VllmPDRouter {
             }
         } else {
             // NIXL: extract kv_transfer_params from prefill response
-            let kv_transfer_params =
-                prefill_response_json.get("kv_transfer_params").cloned();
+            let kv_transfer_params = prefill_response_json.get("kv_transfer_params").cloned();
             if let Some(ref params) = kv_transfer_params {
                 debug!(
                     "Extracted kv_transfer_params from prefill response: {}",
@@ -1382,10 +1382,7 @@ impl VllmPDRouter {
                             );
                         }
                         Err(e) => {
-                            error!(
-                                "Failed to query Mooncake bootstrap for {}: {}",
-                                base_url, e
-                            );
+                            error!("Failed to query Mooncake bootstrap for {}: {}", base_url, e);
                             return Err(e);
                         }
                     }

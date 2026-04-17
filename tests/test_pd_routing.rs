@@ -195,6 +195,7 @@ mod test_pd_routing {
                 history_backend: vllm_router_rs::config::HistoryBackend::Memory,
                 enable_profiling: false,
                 profile_timeout_secs: 30,
+                kv_connector: "nixl".to_string(),
             };
 
             // Router creation will fail due to health checks, but config should be valid

@@ -1070,6 +1070,7 @@ mod tests {
             history_backend: default_history_backend(),
             enable_profiling: false,
             profile_timeout_secs: default_profile_timeout_secs(),
+            kv_connector: default_kv_connector(),
         };
 
         assert!(config.mode.is_pd_mode());
@@ -1137,6 +1138,7 @@ mod tests {
             history_backend: default_history_backend(),
             enable_profiling: false,
             profile_timeout_secs: default_profile_timeout_secs(),
+            kv_connector: default_kv_connector(),
         };
 
         assert!(!config.mode.is_pd_mode());
@@ -1200,6 +1202,7 @@ mod tests {
             history_backend: default_history_backend(),
             enable_profiling: false,
             profile_timeout_secs: default_profile_timeout_secs(),
+            kv_connector: default_kv_connector(),
         };
 
         assert!(config.has_service_discovery());
