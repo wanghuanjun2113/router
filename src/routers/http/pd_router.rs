@@ -1404,6 +1404,13 @@ impl PDRouter {
         prefill_policy: Arc<dyn LoadBalancingPolicy>,
         decode_policy: Arc<dyn LoadBalancingPolicy>,
     ) {
+        info!(
+            "[LOAD-MONITOR] Starting metrics-based load monitor for {} workers, interval={}s, policy=prefill:{}, decode:{}",
+            worker_urls.len(),
+            interval_secs,
+            prefill_policy.name(),
+            decode_policy.name(),
+        );
         loop {
             let mut loads = HashMap::new();
 
@@ -1425,7 +1432,7 @@ impl PDRouter {
                 loads.insert(url, load);
             }
 
-            debug!("Worker loads updated: {:?}", loads);
+            info!("[LOAD-MONITOR] Updated worker loads: {:?}", loads);
 
             // Update both policies with current loads
             prefill_policy.update_loads(&loads);
@@ -1812,7 +1819,9 @@ fn parse_prometheus_metric(text: &str, metric_name: &str) -> Option<f64> {
 /// Fetch worker load from /metrics (Prometheus) endpoint.
 /// load = num_requests_running + num_requests_waiting * 10
 async fn get_worker_load(client: &Client, worker_url: &str) -> Option<isize> {
-    match client.get(format!("{}/metrics", worker_url)).send().await {
+    let metrics_url = format!("{}/metrics", worker_url);
+    info!("[LOAD-METRICS] Fetching load from {}", metrics_url);
+    match client.get(&metrics_url).send().await {
         Ok(res) if res.status().is_success() => match res.text().await {
             Ok(text) => {
                 let running =
@@ -1821,23 +1830,28 @@ async fn get_worker_load(client: &Client, worker_url: &str) -> Option<isize> {
                 let waiting =
                     parse_prometheus_metric(&text, "vllm:num_requests_waiting").unwrap_or(0.0)
                         as isize;
-                Some(running + waiting * 10)
+                let load = running + waiting * 10;
+                info!(
+                    "[LOAD-METRICS] {} => running={}, waiting={}, load={}",
+                    worker_url, running, waiting, load
+                );
+                Some(load)
             }
             Err(e) => {
-                debug!("Failed to read metrics from {}: {}", worker_url, e);
+                warn!("[LOAD-METRICS] Failed to read metrics body from {}: {}", worker_url, e);
                 None
             }
         },
         Ok(res) => {
-            debug!(
-                "Worker {} /metrics returned non-success status: {}",
+            warn!(
+                "[LOAD-METRICS] {} returned non-success status: {}",
                 worker_url,
                 res.status()
             );
             None
         }
         Err(e) => {
-            debug!("Failed to get metrics from {}: {}", worker_url, e);
+            warn!("[LOAD-METRICS] Failed to connect to {}: {}", worker_url, e);
             None
         }
     }
