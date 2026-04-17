@@ -2,8 +2,8 @@ use clap::{ArgAction, Parser, ValueEnum};
 use std::collections::HashMap;
 use vllm_router_rs::config::{
     CircuitBreakerConfig, ConfigError, ConfigResult, ConnectionMode, DiscoveryConfig,
-    HealthCheckConfig, HistoryBackend, MetricsConfig, PolicyConfig, RetryConfig, RouterConfig,
-    RoutingMode, TraceConfig,
+    HealthCheckConfig, HistoryBackend, KvConnector, MetricsConfig, PolicyConfig, RetryConfig,
+    RouterConfig, RoutingMode, TraceConfig,
 };
 use vllm_router_rs::metrics::PrometheusConfig;
 use vllm_router_rs::server::{self, ServerConfig};
@@ -363,6 +363,10 @@ struct CliArgs {
     /// Enable profiling calls to vLLM workers
     #[arg(long, default_value_t = false)]
     profile: bool,
+
+    /// KV connector type for PD disaggregation (nixl or mooncake)
+    #[arg(long, value_enum, default_value_t = KvConnector::Nixl)]
+    kv_connector: KvConnector,
 }
 
 impl CliArgs {
@@ -652,6 +656,7 @@ impl CliArgs {
             },
             enable_profiling: self.profile,
             profile_timeout_secs: 10, // Default profiling timeout
+            kv_connector: self.kv_connector,
         })
     }
 
