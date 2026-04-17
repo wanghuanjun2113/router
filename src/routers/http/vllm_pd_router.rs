@@ -5,6 +5,7 @@ use super::logprobs_merge;
 use super::pd_router::PDRouter;
 use super::pd_types::{error_chain, PDRouterError};
 use super::vllm_service_discovery::{ServiceRegistry, ServiceType};
+use crate::config::KvConnector;
 use crate::core::{BasicWorker, Worker, WorkerType};
 use crate::metrics::RouterMetrics;
 use crate::otel_http::{self, ClientRequestOptions};
@@ -53,8 +54,8 @@ pub struct VllmPDRouter {
     profiling_tasks: Arc<Mutex<HashMap<String, tokio::task::AbortHandle>>>,
     /// Intra-node data parallel size for DP-aware routing (automatically enabled when > 1)
     intra_node_data_parallel_size: usize,
-    /// KV connector type ("nixl" or "mooncake")
-    kv_connector: String,
+    /// KV connector type
+    kv_connector: KvConnector,
     /// Mooncake bootstrap info: prefill base_url -> MooncakePrefillInfo
     mooncake_prefill_info: Arc<Mutex<HashMap<String, MooncakePrefillInfo>>>,
 }
@@ -141,7 +142,7 @@ impl VllmPDRouter {
 
     /// Build kv_transfer_params for the prefill request
     fn build_prefill_kv_transfer_params(&self, transfer_id: Option<&str>) -> Value {
-        if self.kv_connector == "mooncake" {
+        if matches!(self.kv_connector, KvConnector::Mooncake) {
             json!({
                 "do_remote_decode": true,
                 "do_remote_prefill": false,
@@ -517,7 +518,7 @@ impl VllmPDRouter {
 
         // Generate transfer_id for Mooncake (unused for NIXL)
         let transfer_id = format!("xfer-{}", Uuid::new_v4());
-        let transfer_id_ref: Option<&str> = if self.kv_connector == "mooncake" {
+        let transfer_id_ref: Option<&str> = if matches!(self.kv_connector, KvConnector::Mooncake) {
             Some(&transfer_id)
         } else {
             None
@@ -528,7 +529,7 @@ impl VllmPDRouter {
             self.build_prefill_kv_transfer_params(transfer_id_ref);
 
         debug!(
-            "Added kv_transfer_params to prefill request for {} connector",
+            "Added kv_transfer_params to prefill request for {:?} connector",
             self.kv_connector
         );
 
@@ -641,7 +642,7 @@ impl VllmPDRouter {
 
         // Prepare decode request with kv_transfer_params from prefill response at top level
         let mut decode_request = request_json.clone();
-        if self.kv_connector == "mooncake" {
+        if matches!(self.kv_connector, KvConnector::Mooncake) {
             // Mooncake: set decode params proactively from bootstrap info
             let prefill_url_key = format!("http://{}", prefill_base_http);
             if let Some((bootstrap_addr, engine_id)) = self
@@ -891,7 +892,7 @@ impl VllmPDRouter {
 
         // Generate transfer_id for Mooncake (unused for NIXL)
         let transfer_id = format!("xfer-{}", Uuid::new_v4());
-        let transfer_id_ref: Option<&str> = if self.kv_connector == "mooncake" {
+        let transfer_id_ref: Option<&str> = if matches!(self.kv_connector, KvConnector::Mooncake) {
             Some(&transfer_id)
         } else {
             None
@@ -902,7 +903,7 @@ impl VllmPDRouter {
             self.build_prefill_kv_transfer_params(transfer_id_ref);
 
         debug!(
-            "Added kv_transfer_params to prefill request for {} connector",
+            "Added kv_transfer_params to prefill request for {:?} connector",
             self.kv_connector
         );
 
@@ -1050,7 +1051,7 @@ impl VllmPDRouter {
 
         // Stage 2: Prepare decode request with kv_transfer_params
         let mut decode_request = original_request.clone();
-        if self.kv_connector == "mooncake" {
+        if matches!(self.kv_connector, KvConnector::Mooncake) {
             // Mooncake: set decode params proactively from bootstrap info
             if let Some((bootstrap_addr, engine_id)) = self
                 .get_mooncake_info(&prefill_base_url, prefill_dp_rank)
@@ -1275,7 +1276,7 @@ impl VllmPDRouter {
         discovery_address: Option<String>,
         ctx: &Arc<crate::server::AppContext>,
     ) -> Result<Self, String> {
-        let kv_connector = ctx.router_config.kv_connector.clone();
+        let kv_connector = ctx.router_config.kv_connector;
         let http_client = reqwest::Client::new();
 
         if let Some(ref addr) = discovery_address {
@@ -1298,7 +1299,7 @@ impl VllmPDRouter {
                 .map_err(|e| format!("Failed to start service discovery: {}", e))?;
 
             info!(
-                "VllmPDRouter created successfully with pure service discovery, kv_connector={}",
+                "VllmPDRouter created successfully with pure service discovery, kv_connector={:?}",
                 kv_connector
             );
 
@@ -1348,7 +1349,7 @@ impl VllmPDRouter {
 
             // Query Mooncake bootstrap servers if kv_connector is mooncake
             let mooncake_prefill_info = Arc::new(Mutex::new(HashMap::new()));
-            if kv_connector == "mooncake" {
+            if matches!(kv_connector, KvConnector::Mooncake) {
                 info!("Mooncake connector enabled, querying prefill bootstrap servers...");
                 for (url, bootstrap_port) in &prefill_urls {
                     let parsed = url::Url::parse(url)

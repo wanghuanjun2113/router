@@ -81,9 +81,9 @@ pub struct RouterConfig {
     /// Profiling timeout in seconds (for vLLM profiling endpoints)
     #[serde(default = "default_profile_timeout_secs")]
     pub profile_timeout_secs: u64,
-    /// KV connector type for PD disaggregation ("nixl" or "mooncake")
-    #[serde(default = "default_kv_connector")]
-    pub kv_connector: String,
+    /// KV connector type for PD disaggregation
+    #[serde(default)]
+    pub kv_connector: KvConnector,
 }
 
 fn default_profile_timeout_secs() -> u64 {
@@ -98,10 +98,6 @@ fn default_intra_node_data_parallel_size() -> usize {
     1
 }
 
-fn default_kv_connector() -> String {
-    "nixl".to_string()
-}
-
 /// History backend configuration
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -110,6 +106,21 @@ pub enum HistoryBackend {
     Memory,
     /// No history storage
     None,
+}
+
+/// KV connector type for PD disaggregation
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum KvConnector {
+    /// NIXL pull-based KV transfer (default)
+    #[default]
+    #[serde(rename = "nixl")]
+    #[value(name = "nixl")]
+    Nixl,
+    /// Mooncake push-based KV transfer
+    #[serde(rename = "mooncake")]
+    #[value(name = "mooncake")]
+    Mooncake,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -498,7 +509,7 @@ impl Default for RouterConfig {
             history_backend: default_history_backend(),
             enable_profiling: false,
             profile_timeout_secs: default_profile_timeout_secs(),
-            kv_connector: default_kv_connector(),
+            kv_connector: KvConnector::default(),
         }
     }
 }
@@ -1070,7 +1081,7 @@ mod tests {
             history_backend: default_history_backend(),
             enable_profiling: false,
             profile_timeout_secs: default_profile_timeout_secs(),
-            kv_connector: default_kv_connector(),
+            kv_connector: KvConnector::default(),
         };
 
         assert!(config.mode.is_pd_mode());
@@ -1138,7 +1149,7 @@ mod tests {
             history_backend: default_history_backend(),
             enable_profiling: false,
             profile_timeout_secs: default_profile_timeout_secs(),
-            kv_connector: default_kv_connector(),
+            kv_connector: KvConnector::default(),
         };
 
         assert!(!config.mode.is_pd_mode());
@@ -1202,7 +1213,7 @@ mod tests {
             history_backend: default_history_backend(),
             enable_profiling: false,
             profile_timeout_secs: default_profile_timeout_secs(),
-            kv_connector: default_kv_connector(),
+            kv_connector: KvConnector::default(),
         };
 
         assert!(config.has_service_discovery());
